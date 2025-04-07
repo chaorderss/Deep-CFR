@@ -8,7 +8,7 @@ from DeepCFR.workers.driver.Driver import Driver
 if __name__ == '__main__':
     """
     Runs the experiment from The paper "Single Deep Counterfactual Regret Minimization" (Steinberger 2019).
-    
+
     Uses 24 cores.
     """
     ctrl = Driver(t_prof=TrainingProfile(name="EXPERIMENT_SD-CFR_vs_Deep-CFR_FHP",
@@ -17,7 +17,7 @@ if __name__ == '__main__':
 
                                          DISTRIBUTED=True,
                                          CLUSTER=False,
-                                         n_learner_actor_workers=20,  # 20 workers
+                                         n_learner_actor_workers=1,  # 20 workers
 
                                          # regulate exports
                                          export_each_net=False,
