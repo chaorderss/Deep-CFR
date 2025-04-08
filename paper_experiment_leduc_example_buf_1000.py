@@ -3,8 +3,14 @@ from PokerRL.game.games import StandardLeduc
 from DeepCFR.EvalAgentDeepCFR import EvalAgentDeepCFR
 from DeepCFR.TrainingProfile import TrainingProfile
 from DeepCFR.workers.driver.Driver import Driver
-
+import torch
 if __name__ == '__main__':
+    if torch.cuda.is_available():
+        print(" ************************** CUDA is available **************************")
+        device_str = "cuda"
+    else:
+        print(" ************************** CUDA is not available **************************")
+        device_str = "cpu"
     ctrl = Driver(t_prof=TrainingProfile(name="SD-CFR_LEDUC_BUF_1000",
                                          nn_type="feedforward",
                                          max_buffer_size_adv=1e6,
@@ -24,7 +30,7 @@ if __name__ == '__main__':
                                          use_pre_layers_adv=False,
                                          use_pre_layers_avrg=False,
                                          eval_agent_max_strat_buf_size=1000,
-
+                                         device_training=device_str,             # 训练神经网络时使用的设备 ("cpu" or "cuda")
                                          game_cls=StandardLeduc,
 
                                          eval_modes_of_algo=(
