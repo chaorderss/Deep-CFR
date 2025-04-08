@@ -6,7 +6,7 @@ import torch
 # not being able to import ray is okay if you don't run distributed!
 try:
     import ray
-    import ray.utils
+    import ray.utils # type: ignore
 except ModuleNotFoundError:
     pass
 
