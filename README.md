@@ -28,9 +28,9 @@ VERY IMPORTANT NOTES:
 - Results on iteration 0 have no meaning since they compare a random neural network to an exactly uniform strategy.
 
 
- 
+
 The action-probability comparison was conducted on a single CPU using `analyze_sdcfr_vs_dcfr_strategy.py`.
-The root directory also contains scripts to reproduce our experiments on exploitability in Leduc and BigLeduc, and 
+The root directory also contains scripts to reproduce our experiments on exploitability in Leduc and BigLeduc, and
 the experiment analyzing the effect of reservoir sampling on B^M with various capacities.
 
 
@@ -69,17 +69,17 @@ from DeepCFR.workers.driver.Driver import Driver
 
 if __name__ == '__main__':
     ctrl = Driver(t_prof=TrainingProfile(name="SD-CFR_LEDUC_EXAMPLE",
-    
+
                                          eval_agent_export_freq=20,  # export API to play against the agent
-                                         
+
                                          nn_type="feedforward", # we also support recurrent nets
                                          max_buffer_size_adv=3e6,
                                          n_traversals_per_iter=1500,
                                          n_batches_adv_training=750,
                                          init_adv_model="last", # "last" or "random"
 
-                                         game_cls=StandardLeduc, # The game to play     
-                                         
+                                         game_cls=StandardLeduc, # The game to play
+
                                          eval_modes_of_algo=(
                                              EvalAgentDeepCFR.EVAL_MODE_SINGLE,  # Single Deep CFR (SD-CFR)
                                          ),
@@ -94,7 +94,7 @@ if __name__ == '__main__':
 Note that you can specify one or both averaging methods under `eval_modes_of_algo`.
 Choosing both is useful to compare them as they will share the value networks! However, we showed in [2] that SD-CFR
 is expected to perform better, is faster, and requires less memory.
-                                         
+
 
 ## Cloud & Clusters
 For deployment on AWS, whether single-core, many-core distributed, or on a cluster, please first follow
@@ -105,13 +105,13 @@ In your run-script set either the `DISTRIBUTED` or the `CLUSTER` option of the T
 (see e.g. `DeepCFR/paper_experiment_sdcfr_vs_deepcfr_h2h.py`).
 Moreover, you should specify the number of `LearnerActor` and evaluator workers (if applicable) you want to deploy.
 Note that hyperparmeters ending with "_per_la" (e.g. the batch size) are effectively multiplied by the number of
-workers. 
+workers.
 
 When running in DISTRIBUTED mode (i.e. one machine, many cores), simply ssh onto your AWS instance, get your code
 onto it (e.g. through git cloning your forked repo) and start your run-script.
 To fire up a cluster, define a `.yaml` cluster configuration that properly sets up your workers. Each of them
 should have a copy of your forked repo as well as all dependencies on it.
-Use `ray up ...` in an ssh session to the head of the cluster to start the job - more detailed instructions about 
+Use `ray up ...` in an ssh session to the head of the cluster to start the job - more detailed instructions about
 the underlying framework we use for distributed computing can be found at [ray](https://github.com/ray-project/ray).
 
 
