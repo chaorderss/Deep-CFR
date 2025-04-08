@@ -3,8 +3,8 @@
 
 import shutil
 from os.path import join as ospj
+from torch.utils.tensorboard import SummaryWriter
 
-from PokerRL._.CrayonWrapper import CrayonWrapper
 from PokerRL.rl.base_cls.workers.WorkerBase import WorkerBase
 from PokerRL.util import file_util
 
@@ -139,12 +139,8 @@ class DriverBase(WorkerBase):
                                  self._rlbr_ps),
             ])
 
-        self.crayon = CrayonWrapper(name=t_prof.name, chief_handle=self.chief_handle,
-                                    path_log_storage=self._t_prof.path_log_storage,
-                                    crayon_server_address=t_prof.local_crayon_server_docker_address,
-                                    runs_distributed=t_prof.DISTRIBUTED,
-                                    runs_cluster=t_prof.CLUSTER,
-                                    )
+        # Initialize tensorboard writer
+        self.writer = SummaryWriter(log_dir=ospj(self._t_prof.path_log_storage, t_prof.name))
 
     def _maybe_load_checkpoint_init(self):
         if self._step_to_import is None:
@@ -193,10 +189,16 @@ class DriverBase(WorkerBase):
 
     def save_logs(self):
         """
-        Pulls all new logs from the LogBuffer and adds them to crayon (Tensorboard wrapper). It also saves them to disk.
+        Pulls all new logs from the LogBuffer and writes them to tensorboard.
         """
-        self.crayon.update_from_log_buffer()
-        self.crayon.export_all(iter_nr=self._cfr_iter)
+        # Get logs from chief
+        logs = self._ray.get(self._ray.remote(self.chief_handle.get_logs))
+
+        # Write to tensorboard
+        for tag, value in logs.items():
+            self.writer.add_scalar(tag, value, self._cfr_iter)
+
+        self.writer.flush()
 
         # Delete past version
         s = [self._cfr_iter]
