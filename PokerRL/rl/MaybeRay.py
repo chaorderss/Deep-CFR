@@ -55,8 +55,27 @@ class MaybeRay:
         return obj
 
     def remote(self, fn, *args):
+        """
+        支持两种调用方式:
+        1. 传统方式: self._ray.remote(fn, *args)
+        2. 直接调用方式: fn.remote(*args)
+
+        当使用方式2时，fn是一个已经采用@ray.remote装饰的函数或方法，可以直接调用.remote()
+        """
         if self.runs_distributed:
-            return fn.remote(*args)
+            # 如果fn有remote属性，说明是直接调用
+            if hasattr(fn, 'remote') and callable(fn.remote):
+                return fn.remote(*args)
+            # 否则使用传统方式
+            try:
+                # 尝试使用ray.remote(fn)(*args)方式
+                return ray.remote(fn)(*args)
+            except Exception as e:
+                # 如果失败，可能是其他问题，记录错误并重新抛出
+                print(f"Ray远程调用错误: {str(e)}")
+                raise
+
+        # 非分布式模式，直接调用函数
         return fn(*args)
 
     def create_worker(self, cls, *args):

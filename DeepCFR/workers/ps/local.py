@@ -10,6 +10,8 @@ from PokerRL.rl.base_cls.workers.ParameterServerBase import ParameterServerBase
 from PokerRL.rl.neural.AvrgStrategyNet import AvrgStrategyNet
 from PokerRL.rl.neural.DuelingQNet import DuelingQNet
 
+import ray
+
 
 class ParameterServer(ParameterServerBase):
 
@@ -40,23 +42,50 @@ class ParameterServer(ParameterServerBase):
 
     # ______________________________________________ API to pull from PS _______________________________________________
 
+    @ray.method(num_returns=1)
     def get_adv_weights(self):
         self._adv_net.zero_grad()
         return self._ray.state_dict_to_numpy(self._adv_net.state_dict())
 
+    @ray.method(num_returns=1)
     def get_avrg_weights(self):
         self._avrg_net.zero_grad()
         return self._ray.state_dict_to_numpy(self._avrg_net.state_dict())
 
+    @ray.method(num_returns=1)
+    def get_adv_buffer_size(self, p_id=None, current_cfr_iter=None):
+        """
+        返回优势网络缓冲区大小。参数服务器不存储样本，
+        但异步模式需要此方法存在于PS中。
+
+        Returns:
+            int: 默认返回-1表示PS没有缓冲区
+        """
+        return -1
+
+    @ray.method(num_returns=1)
+    def get_avrg_buffer_size(self, p_id=None, current_cfr_iter=None):
+        """
+        返回平均策略网络缓冲区大小。参数服务器不存储样本，
+        但异步模式需要此方法存在于PS中。
+
+        Returns:
+            int: 默认返回-1表示PS没有缓冲区
+        """
+        return -1
+
     # ____________________________________________ API to make PS compute ______________________________________________
+    @ray.method(num_returns=0)
     def apply_grads_adv(self, list_of_grads):
         self._apply_grads(list_of_grads=list_of_grads, optimizer=self._adv_optim, net=self._adv_net,
                           grad_norm_clip=self._adv_args.grad_norm_clipping)
 
+    @ray.method(num_returns=0)
     def apply_grads_avrg(self, list_of_grads):
         self._apply_grads(list_of_grads=list_of_grads, optimizer=self._avrg_optim, net=self._avrg_net,
                           grad_norm_clip=self._avrg_args.grad_norm_clipping)
 
+    @ray.method(num_returns=0)
     def reset_adv_net(self, cfr_iter):
         if self._adv_args.init_adv_model == "last":
             self._adv_net.zero_grad()
@@ -75,6 +104,7 @@ class ParameterServer(ParameterServerBase):
                              self._exp_mem_usage, "Debug/MemoryUsage/PS", cfr_iter,
                              process.memory_info().rss)
 
+    @ray.method(num_returns=0)
     def reset_avrg_net(self):
         if self._avrg_args.init_avrg_model == "last":
             self._avrg_net.zero_grad()
@@ -88,13 +118,16 @@ class ParameterServer(ParameterServerBase):
         else:
             raise ValueError(self._avrg_args.init_avrg_model)
 
+    @ray.method(num_returns=0)
     def step_scheduler_adv(self, loss):
         self._adv_lr_scheduler.step(loss)
 
+    @ray.method(num_returns=0)
     def step_scheduler_avrg(self, loss):
         self._avrg_lr_scheduler.step(loss)
 
     # ______________________________________________ API for checkpointing _____________________________________________
+    @ray.method(num_returns=0)
     def checkpoint(self, curr_step):
         state = {
             "adv_net": self._adv_net.state_dict(),
@@ -112,6 +145,7 @@ class ParameterServer(ParameterServerBase):
                   "wb") as pkl_file:
             pickle.dump(obj=state, file=pkl_file, protocol=pickle.HIGHEST_PROTOCOL)
 
+    @ray.method(num_returns=0)
     def load_checkpoint(self, name_to_load, step):
         with open(self._get_checkpoint_file_path(name=name_to_load, step=step,
                                                  cls=self.__class__, worker_id="P" + str(self.owner)),

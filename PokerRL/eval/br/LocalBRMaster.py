@@ -61,7 +61,7 @@ class LocalBRMaster(EvaluatorMasterBase):
                                       score_total=sum(total_of_all_stacks) / float(len(total_of_all_stacks)))
 
     def update_weights(self):
-        w = self.pull_current_strat_from_chief()
+        w = self.pull_current_models_from_chief()
         self._eval_agent.update_weights(copy.deepcopy(w))
 
     def _compute_br_heads_up(self, stack_size_idx, iter_nr=None, do_export_tree=True):

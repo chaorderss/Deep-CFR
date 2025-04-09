@@ -122,6 +122,11 @@ class TrainingProfile(TrainingProfileBase):
                  rl_br_args=None,                   # RLBR (Reinforcement Learning Best Response) 算法的参数
                  h2h_args=None,                     # H2H (Head-to-Head) 对抗评估的参数
 
+                 # ------ Async Data Generation Control ---
+                 use_async_data=False,          # 是否启用异步数据生成
+                 max_data_staleness=5,          # 数据最大年龄(以CFR迭代次数计)
+                 min_data_for_training=1024,    # 训练所需最小样本数
+
                  ):
         print(" ************************** Initing args for: ", name, "  **************************")
 
@@ -273,3 +278,13 @@ class TrainingProfile(TrainingProfileBase):
         # --- 设置参数服务器设备 ---
         assert isinstance(device_parameter_server, str), "Please pass a string (either 'cpu' or 'cuda')!" # 确认输入是字符串
         self.device_parameter_server = torch.device(device_parameter_server) # 将字符串转换为 PyTorch 设备对象
+
+        # --- Store new flags ---
+        self.use_async_data = use_async_data
+        self.max_data_staleness = max_data_staleness
+        self.min_data_for_training = min_data_for_training # Ensure this is >= mini_batch_size
+
+        if use_async_data:
+            print(" *** Asynchronous Data Generation ENABLED ***")
+            if online:
+                 print("Warning: Async data generation might conflict with 'online=True' logic.")

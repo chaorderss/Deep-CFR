@@ -33,7 +33,7 @@ class LocalHead2HeadMaster(EvaluatorMasterBase):
             e.set_mode(mode)
 
     def update_weights(self):
-        w = self.pull_current_strat_from_chief()
+        w = self.pull_current_models_from_chief()
 
         # Assumes that each eval_agent knows what to do with this dict. This should be the case after .set_modes() has
         # been called

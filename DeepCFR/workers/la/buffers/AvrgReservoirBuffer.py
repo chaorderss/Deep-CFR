@@ -81,3 +81,21 @@ class AvrgReservoirBuffer(_ResBufBase):
     def load_state_dict(self, state):
         super().load_state_dict(state["base"])
         self._a_probs_buffer = state["a_probs"]
+
+    def get_all(self):
+        """获取所有存储的样本"""
+        samples = []
+        for i in range(self.size):
+            if self._nn_type == "recurrent":
+                obs = self._pub_obs_buffer[i]
+            else:
+                obs = self._pub_obs_buffer[i].cpu().numpy()
+
+            samples.append({
+                "pub_obs": obs,
+                "range_idx": self._range_idx_buffer[i].item(),
+                "legal_action_mask": self._legal_action_mask_buffer[i].cpu().numpy(),
+                "strat_probs": self._a_probs_buffer[i].cpu().numpy(),
+                "iteration": self._iteration_buffer[i].item()
+            })
+        return samples

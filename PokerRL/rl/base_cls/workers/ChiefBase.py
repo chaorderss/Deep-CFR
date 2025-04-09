@@ -19,6 +19,7 @@ class ChiefBase(WorkerBase):
         super().__init__(t_prof=t_prof)
         self._experiment_names = {}
         self._log_buf = _LogBuffer()
+        self._cfr_iter = 0
 
     def pull_current_eval_strategy(self, last_iteration_receiver_has):
         """
@@ -67,6 +68,9 @@ class ChiefBase(WorkerBase):
 
     def get_new_values(self):
         return self._log_buf.get_new_values()
+
+    def update_cfr_iter(self):
+        self._cfr_iter += 1
 
 
 class _LogBuffer:

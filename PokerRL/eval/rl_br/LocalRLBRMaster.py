@@ -34,7 +34,7 @@ class LocalRLBRMaster(EvaluatorMasterBase):
         self._ps_handle = param_server
 
     def update_weights(self):
-        w = self.pull_current_strat_from_chief()
+        w = self.pull_current_models_from_chief()
         self._eval_agent.update_weights(copy.deepcopy(w))
 
     def evaluate(self, global_iter_nr):

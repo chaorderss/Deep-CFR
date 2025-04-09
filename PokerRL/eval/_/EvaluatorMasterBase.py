@@ -80,6 +80,12 @@ class EvaluatorMasterBase(WorkerBase):
                                                              self._chief_info))
         return w
 
+    def pull_current_models_from_chief(self):
+        """
+        直接从Chief获取当前的策略网络模型
+        """
+        return self._ray.get(self._ray.remote(self._chief_handle.get_current_models))
+
     def _create_experiments(self, self_name, ):
         """
         Registers a new experiment either for each player and their average or just for their average.

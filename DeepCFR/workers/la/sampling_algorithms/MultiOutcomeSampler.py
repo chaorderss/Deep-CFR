@@ -85,12 +85,32 @@ class MultiOutcomeSampler(_SamplerBase):
         _idxs = _idxs[:n_actions_to_smpl]
         actions = [legal_actions_list[i] for i in _idxs]
 
-        strat_i = iteration_strats[traverser].get_a_probs(
-            pub_obses=[current_pub_obs],
-            range_idxs=[traverser_range_idx],
-            legal_actions_lists=[legal_actions_list],
-            to_np=True
-        )[0]
+        # --- 修改开始: 根据类型获取动作概率 ---
+        strat_source = iteration_strats[traverser]
+        if hasattr(strat_source, '_net') and hasattr(strat_source._net, 'get_a_probs'):
+            # 如果是 AdvWrapper 或类似对象，从内部网络获取
+            strat_i = strat_source._net.get_a_probs(
+                pub_obses=[current_pub_obs],
+                range_idxs=[traverser_range_idx],
+                legal_actions_lists=[legal_actions_list],
+                to_np=True
+            )[0]
+        elif hasattr(strat_source, 'get_a_probs'):
+            # 如果对象本身有 get_a_probs 方法
+            strat_i = strat_source.get_a_probs(
+                pub_obses=[current_pub_obs],
+                range_idxs=[traverser_range_idx],
+                legal_actions_lists=[legal_actions_list],
+                to_np=True
+            )[0]
+        else:
+            # 无法获取策略，抛出错误或使用默认策略（例如均匀随机）
+            print(f"警告: 无法从 {type(strat_source)} 获取策略，使用均匀随机策略")
+            strat_i = np.ones(self._env_bldr.N_ACTIONS, dtype=np.float32) / n_legal_actions
+            strat_i *= rl_util.get_legal_action_mask_np(n_actions=self._env_bldr.N_ACTIONS,
+                                                         legal_actions_list=legal_actions_list,
+                                                         dtype=np.float32)
+        # --- 修改结束 ---
 
         cumm_rew = 0.0
         aprx_imm_reg = torch.zeros(size=(self._env_bldr.N_ACTIONS,),
@@ -145,3 +165,64 @@ class MultiOutcomeSampler(_SamplerBase):
         # *n_legal_actions    because we multiply by strat.
         # /n_actions_to_smpl  because we summed that many returns and want their mean
         return cumm_rew * n_legal_actions / n_actions_to_smpl
+
+    def generate_data_adv(self, p_id, adv_net, avrg_net, cfr_iter, n_traversals):
+        """
+        生成优势网络训练样本
+
+        Args:
+            p_id: 玩家ID
+            adv_net: 优势网络
+            avrg_net: 平均策略网络
+            cfr_iter: 当前CFR迭代号
+            n_traversals: 生成样本数量
+
+        Returns:
+            生成的样本列表
+        """
+        # 构建策略
+        iteration_strats = []
+        for s in range(len(adv_net)):
+            iteration_strats.append(adv_net[s])
+
+        # 生成数据
+        self.generate(
+            n_traversals=n_traversals,
+            traverser=p_id,
+            iteration_strats=iteration_strats,
+            cfr_iter=cfr_iter
+        )
+
+        # 返回生成的样本
+        return self._adv_buffers[p_id].get_all()
+
+    def generate_data_avrg(self, p_id, adv_net, cfr_iter, n_traversals):
+        """
+        生成平均策略网络训练样本
+
+        Args:
+            p_id: 玩家ID
+            adv_net: 优势网络
+            cfr_iter: 当前CFR迭代号
+            n_traversals: 生成样本数量
+
+        Returns:
+            生成的样本列表
+        """
+        # 构建策略
+        iteration_strats = []
+        for s in range(len(adv_net)):
+            iteration_strats.append(adv_net[s])
+
+        # 生成数据
+        self.generate(
+            n_traversals=n_traversals,
+            traverser=p_id,
+            iteration_strats=iteration_strats,
+            cfr_iter=cfr_iter
+        )
+
+        # 返回生成的样本
+        if self._avrg_buffers is not None and p_id < len(self._avrg_buffers):
+            return self._avrg_buffers[p_id].get_all()
+        return []

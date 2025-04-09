@@ -14,7 +14,7 @@ from PokerRL.eval.lbr import _util
 class LocalLBRMaster(EvaluatorMasterBase):
     """
     LBR computation as described in https://arxiv.org/abs/1612.07547
-    
+
     EvalLBRMaster manages a sub-cluster of EvalLBRWorker nodes.
     """
 
@@ -87,4 +87,4 @@ class LocalLBRMaster(EvaluatorMasterBase):
                                       )
 
     def update_weights(self):
-        self.weights_for_eval_agent = self.pull_current_strat_from_chief()
+        self.weights_for_eval_agent = self.pull_current_models_from_chief()

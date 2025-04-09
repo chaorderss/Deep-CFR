@@ -4,6 +4,7 @@ import pickle
 from os.path import join as ospj
 
 import psutil
+import ray
 
 from DeepCFR.IterationStrategy import IterationStrategy
 from DeepCFR.EvalAgentDeepCFR import EvalAgentDeepCFR
@@ -20,6 +21,8 @@ class Chief(_ChiefBase):
         self._ps_handles = None
         self._la_handles = None
         self._env_bldr = rl_util.get_env_builder(t_prof=t_prof)
+
+        self._cfr_iter = 0  # 初始化迭代计数器
 
         self._SINGLE = EvalAgentDeepCFR.EVAL_MODE_SINGLE in self._t_prof.eval_modes_of_algo
         self._AVRG = EvalAgentDeepCFR.EVAL_MODE_AVRG_NET in self._t_prof.eval_modes_of_algo
@@ -40,9 +43,11 @@ class Chief(_ChiefBase):
             if self._t_prof.log_verbose:
                 self._exp_mem_usage = self.create_experiment(self._t_prof.name + " Chief_Memory_Usage")
 
+    @ray.method(num_returns=0)
     def set_la_handles(self, *la_handles):
         self._la_handles = list(la_handles)
 
+    @ray.method(num_returns=0)
     def set_ps_handle(self, *ps_handles):
         self._ps_handles = list(ps_handles)
 
@@ -75,8 +80,8 @@ class Chief(_ChiefBase):
 
     def _pull_avrg_net_eval_strat(self):
         return [
-            self._ray.get(self._ray.remote(ps.get_avrg_weights))
-            for ps in self._ps_handles
+            self._ray.get(self._ps_handles[p_id].get_avrg_weights.remote())
+            for p_id in range(self._t_prof.n_seats)
         ]
 
     def _pull_single_eval_strat(self, last_iteration_receiver_has):
@@ -191,3 +196,29 @@ class Chief(_ChiefBase):
                           "rb") as pkl_file:
                     state = pickle.load(pkl_file)
                     self._strategy_buffers[p_id].load_state_dict(state["strat_buffer"])
+
+    @ray.method(num_returns=1)
+    def get_current_cfr_iter(self):
+        """获取当前CFR迭代号"""
+        return self._cfr_iter
+
+    @ray.method(num_returns=0)
+    def set_current_cfr_iter(self, cfr_iter):
+        """设置当前CFR迭代号"""
+        self._cfr_iter = cfr_iter
+
+    @ray.method(num_returns=1)
+    def get_current_models(self):
+        """获取当前策略网络模型"""
+        models = {}
+
+        # 获取平均策略网络
+        if self._AVRG:
+            models[EvalAgentDeepCFR.EVAL_MODE_AVRG_NET] = self._pull_avrg_net_eval_strat()
+
+        # 获取单次策略网络
+        if self._SINGLE:
+            last_iteration = [None] * self._t_prof.n_seats
+            models[EvalAgentDeepCFR.EVAL_MODE_SINGLE], _ = self._pull_single_eval_strat(last_iteration)
+
+        return models
