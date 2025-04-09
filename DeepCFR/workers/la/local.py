@@ -18,7 +18,6 @@ from DeepCFR.workers.la.AvrgWrapper import AvrgWrapper
 from DeepCFR.workers.la.sampling_algorithms.MultiOutcomeSampler import MultiOutcomeSampler
 from PokerRL.rl import rl_util
 from PokerRL.rl.base_cls.workers.WorkerBase import WorkerBase
-from DeepCFR.workers.la.buffers._ReservoirBufferBase import ReservoirBufferBase as ReservoirBuffer
 from PokerRL.rl.base_cls.workers.LearnerActorBase import LearnerActorBase
 
 
@@ -177,13 +176,13 @@ class LearnerActor(LearnerActorBase):
         # 生成优势样本
         if hasattr(self, "_sample_adv") and callable(self._sample_adv):
             samples = self._sample_adv(p_id=p_id, cfr_iter=cfr_iter)
-            self._adv_buffer.add_samples(samples)
+            # self._adv_buffer.add(samples)
 
         # 生成平均策略样本
         if self._AVRG and hasattr(self, "_sample_avrg") and callable(self._sample_avrg):
             if cfr_iter > 0:  # 第一次迭代跳过
                 samples = self._sample_avrg(p_id=p_id, cfr_iter=cfr_iter)
-                self._avrg_buffer.add_samples(samples)
+                self._avrg_buffer.add(samples)
 
     # ================================
     # === 异步数据生成相关新增方法 ===
@@ -362,7 +361,12 @@ class LearnerActor(LearnerActorBase):
             # 原始同步模式逻辑
             grads = self._ray.grads_to_numpy(
                 self._adv_wrappers[p_id].get_grads_one_batch_from_buffer(buffer=self._adv_buffers[p_id]))
-            return grads, self._adv_wrappers[p_id].loss_last_batch
+            loss = self._adv_wrappers[p_id].loss_last_batch
+            self._loss_last_batch_adv[p_id] = loss
+
+            # --- 正确的返回值应该是字典或None ---
+            numpy_grads = self._ray.grads_to_numpy(grads) if grads is not None else None
+            return numpy_grads, loss
         else:
             # 异步模式: 从异步缓冲区获取过滤后的样本批次
             if p_id not in self._async_adv_buffers or not self._async_adv_buffers[p_id]:
@@ -426,7 +430,11 @@ class LearnerActor(LearnerActorBase):
                 self._adv_wrappers[p_id].get_grads_one_batch_from_buffer(buffer=temp_buffer))
 
             self._loss_last_batch_adv[p_id] = self._adv_wrappers[p_id].loss_last_batch
-            return grads, self._adv_wrappers[p_id].loss_last_batch
+            loss = self._adv_wrappers[p_id].loss_last_batch
+
+            # --- 正确的返回值应该是字典或None ---
+            numpy_grads = self._ray.grads_to_numpy(grads) if grads is not None else None
+            return numpy_grads, loss
 
     @ray.method(num_returns=2)
     def get_avrg_grads(self, p_id, cfr_iter=None):
@@ -437,15 +445,25 @@ class LearnerActor(LearnerActorBase):
 
         if not use_async or not self._AVRG:
             # 原始同步逻辑
-            return self._ray.grads_to_numpy(
-                self._avrg_wrappers[p_id].get_grads_one_batch_from_buffer(buffer=self._avrg_buffers[p_id])), \
-                self._avrg_wrappers[p_id].loss_last_batch
+            grads = self._ray.grads_to_numpy(
+                self._avrg_wrappers[p_id].get_grads_one_batch_from_buffer(buffer=self._avrg_buffers[p_id]))
+            loss = self._avrg_wrappers[p_id].loss_last_batch
+            self._loss_last_batch_avrg[p_id] = loss
+
+            # --- 正确的返回值应该是字典或None ---
+            numpy_grads = self._ray.grads_to_numpy(grads) if grads is not None else None
+            return numpy_grads, loss
         else:
             # 异步模式的平均策略网络梯度计算逻辑可以根据需要添加
             # 目前暂时使用同步模式的逻辑
-            return self._ray.grads_to_numpy(
-                self._avrg_wrappers[p_id].get_grads_one_batch_from_buffer(buffer=self._avrg_buffers[p_id])), \
-                self._avrg_wrappers[p_id].loss_last_batch
+            grads = self._ray.grads_to_numpy(
+                self._avrg_wrappers[p_id].get_grads_one_batch_from_buffer(buffer=self._avrg_buffers[p_id]))
+            loss = self._avrg_wrappers[p_id].loss_last_batch
+            self._loss_last_batch_avrg[p_id] = loss
+
+            # --- 正确的返回值应该是字典或None ---
+            numpy_grads = self._ray.grads_to_numpy(grads) if grads is not None else None
+            return numpy_grads, loss
 
     @ray.method(num_returns=0)
     def update(self, adv_state_dicts=None, avrg_state_dicts=None):
@@ -521,13 +539,21 @@ class LearnerActor(LearnerActorBase):
             n_samples = self._t_prof.n_traversals_per_iter // self._t_prof.n_seats
 
         # 准备策略列表 - 直接使用包装器
-        iteration_strats = []
-        for s in range(self._t_prof.n_seats):
-            iteration_strats.append(self._adv_wrappers[s])
+        # iteration_strats = []
+        iteration_strats = [
+            IterationStrategy(t_prof=self._t_prof, env_bldr=self._env_bldr, owner=p,
+                              device=self._t_prof.device_inference, cfr_iter=cfr_iter)
+            for p in range(self._t_prof.n_seats)
+        ]
+        for s in iteration_strats:
+            s.load_net_state_dict(state_dict=self._adv_wrappers[s.owner].net_state_dict())
+
+        # for s in range(self._t_prof.n_seats):
+        #     iteration_strats.append(self._adv_wrappers[s])
 
         # 直接调用 MultiOutcomeSampler.generate 方法
         self._data_sampler.generate(
-            n_traversals=n_samples,
+            n_traversals=self._t_prof.n_traversals_per_iter,
             traverser=p_id,
             iteration_strats=iteration_strats,
             cfr_iter=cfr_iter

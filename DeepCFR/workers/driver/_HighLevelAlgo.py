@@ -151,13 +151,13 @@ class HighLevelAlgo(_HighLevelAlgoBase):
         # For logging the loss to see convergence in Tensorboard
         if self._t_prof.log_verbose:
             exp_loss_each_p = [
-                self._ray.get(self._chief_handle.create_experiment.remote(
+                self._ray.get(self._ray.remote(self._chief_handle.create_experiment,
                     self._t_prof.name + "_ADVLoss_P" + str(p_id)))
                 for p_id in range(self._t_prof.n_seats)
             ]
 
         self._ray.wait([
-            self._ray.remote(self._ps_handles[p_id].reset_adv_net.remote(cfr_iter))
+            self._ray.remote(self._ps_handles[p_id].reset_adv_net, cfr_iter)
         ])
         self._update_leaner_actors(update_adv_for_plyrs=[p_id])
 
@@ -180,21 +180,24 @@ class HighLevelAlgo(_HighLevelAlgoBase):
 
             # Applying gradients
             t0 = time.time()
-            self._ray.get(self._ps_handles[p_id].apply_grads_adv.remote(grads_from_all_las))
+            apply_grad_ref = self._ray.remote(self._ps_handles[p_id].apply_grads_adv, grads_from_all_las)
+            self._ray.get(apply_grad_ref)
 
             # Step LR scheduler
-            self._ray.get(self._ps_handles[p_id].step_scheduler_adv.remote(_averaged_loss))
+            step_ref = self._ray.remote(self._ps_handles[p_id].step_scheduler_adv, _averaged_loss)
+            self._ray.get(step_ref)
 
             # update ADV on all las
             self._update_leaner_actors(update_adv_for_plyrs=[p_id])
 
             # log current loss
             if self._t_prof.log_verbose and ((epoch_nr + 1) % SMOOTHING == 0):
-                self._ray.wait([
+                log_refs = [
                     self._ray.remote(self._chief_handle.add_scalar,
                                      exp_loss_each_p[p_id], "DCFR_NN_Losses/Advantage", epoch_nr,
                                      accumulated_averaged_loss / SMOOTHING)
-                ])
+                ]
+                self._ray.wait(log_refs)
                 accumulated_averaged_loss = 0.0
 
             t_syncing += time.time() - t0
@@ -219,20 +222,20 @@ class HighLevelAlgo(_HighLevelAlgoBase):
             if self._t_prof.use_async_data and cfr_iter is not None:
                 # 异步模式下传递CFR迭代号
                 grads = [
-                    la.get_adv_grads.remote(p_id, cfr_iter)
+                    self._ray.remote(la.get_adv_grads, p_id, cfr_iter)
                     for la in self._la_handles
                 ]
             else:
                 # 同步模式保持原样
                 grads = [
-                    la.get_adv_grads.remote(p_id)
+                    self._ray.remote(la.get_adv_grads, p_id)
                     for la in self._la_handles
                 ]
 
             self._ray.wait(grads)
 
             losses = self._ray.get([
-                la.get_loss_last_batch_adv.remote(p_id)
+                self._ray.remote(la.get_loss_last_batch_adv, p_id)
                 for la in self._la_handles
             ])
         else:
@@ -277,6 +280,11 @@ class HighLevelAlgo(_HighLevelAlgoBase):
                 for la in self._la_handles
             ])
         else:
+            # self._ray.wait([
+            #     self._ray.remote(la.generate_data,
+            #                     p_id, cfr_iter)
+            #     for la in self._la_handles
+            # ])
             for la in self._la_handles:
                 la.generate_data(p_id, cfr_iter)
 
@@ -322,7 +330,7 @@ class HighLevelAlgo(_HighLevelAlgoBase):
                 w_adv[p_id] = None
             else:
                 if is_distributed:
-                    w_adv[p_id] = self._ps_handles[p_id].get_adv_weights.remote()
+                    w_adv[p_id] = self._ray.remote(self._ps_handles[p_id].get_adv_weights)
                 else:
                     w_adv[p_id] = self._ps_handles[p_id].get_adv_weights()
 
@@ -330,14 +338,14 @@ class HighLevelAlgo(_HighLevelAlgoBase):
                 w_avrg[p_id] = None
             else:
                 if is_distributed:
-                    w_avrg[p_id] = self._ps_handles[p_id].get_avrg_weights.remote()
+                    w_avrg[p_id] = self._ray.remote(self._ps_handles[p_id].get_avrg_weights)
                 else:
                     w_avrg[p_id] = self._ps_handles[p_id].get_avrg_weights()
 
         for batch in la_batches:
             if is_distributed:
                 self._ray.wait([
-                    la.update.remote(w_adv, w_avrg)
+                    self._ray.remote(la.update, w_adv, w_avrg)
                     for la in batch
                 ])
             else:
@@ -361,9 +369,9 @@ class HighLevelAlgo(_HighLevelAlgoBase):
         is_distributed = hasattr(self._ray, 'runs_distributed') and self._ray.runs_distributed
 
         if is_distributed:
-            weights = self._ray.get(self._ps_handles[p_id].get_adv_weights.remote())
+            weights = self._ray.get(self._ray.remote(self._ps_handles[p_id].get_adv_weights))
             self._ray.wait([
-                self._chief_handle.add_new_iteration_strategy_model.remote(
+                self._ray.remote(self._chief_handle.add_new_iteration_strategy_model,
                     p_id, weights, cfr_iter
                 )
             ])
@@ -392,20 +400,20 @@ class HighLevelAlgo(_HighLevelAlgoBase):
             if self._t_prof.use_async_data and cfr_iter is not None:
                 # 异步模式下传递CFR迭代号
                 grads = [
-                    la.get_avrg_grads.remote(p_id, cfr_iter)
+                    self._ray.remote(la.get_avrg_grads, p_id, cfr_iter)
                     for la in self._la_handles
                 ]
             else:
                 # 同步模式保持原样
                 grads = [
-                    la.get_avrg_grads.remote(p_id)
+                    self._ray.remote(la.get_avrg_grads, p_id)
                     for la in self._la_handles
                 ]
 
             self._ray.wait(grads)
 
             losses = self._ray.get([
-                la.get_loss_last_batch_avrg.remote(p_id)
+                self._ray.remote(la.get_loss_last_batch_avrg, p_id)
                 for la in self._la_handles
             ])
         else:
@@ -441,7 +449,8 @@ class HighLevelAlgo(_HighLevelAlgoBase):
         # 检查是否有足够数据进行训练（仅异步模式）
         if self._t_prof.use_async_data:
             # 假设PS有类似的方法获取AVRG缓冲区大小
-            buffer_size = self._ray.get(self._ps_handles[p_id].get_avrg_buffer_size.remote(p_id, cfr_iter))
+            buffer_size_ref = self._ray.remote(self._ps_handles[p_id].get_avrg_buffer_size, p_id, cfr_iter)
+            buffer_size = self._ray.get(buffer_size_ref)
             if buffer_size < self._t_prof.min_data_for_training:
                 print(f"跳过玩家 {p_id} 的平均策略网络训练: 数据不足 ({buffer_size} < {self._t_prof.min_data_for_training})")
                 return 0.0, 0.0
@@ -449,13 +458,13 @@ class HighLevelAlgo(_HighLevelAlgoBase):
         # For logging the loss to see convergence in Tensorboard
         if self._t_prof.log_verbose:
             exp_loss_each_p = [
-                self._ray.get(self._chief_handle.create_experiment.remote(
+                self._ray.get(self._ray.remote(self._chief_handle.create_experiment,
                     self._t_prof.name + "_AVRGLoss_P" + str(p_id)))
                 for p_id in range(self._t_prof.n_seats)
             ]
 
         self._ray.wait([
-            self._ray.remote(self._ps_handles[p_id].reset_avrg_net.remote())
+            self._ray.remote(self._ps_handles[p_id].reset_avrg_net)
         ])
         self._update_leaner_actors(update_avrg_for_plyrs=[p_id])
 
@@ -480,21 +489,24 @@ class HighLevelAlgo(_HighLevelAlgoBase):
 
                 # Applying gradients
                 t0 = time.time()
-                self._ray.get(self._ps_handles[p_id].apply_grads_avrg.remote(grads_from_all_las))
+                apply_grad_ref = self._ray.remote(self._ps_handles[p_id].apply_grads_avrg, grads_from_all_las)
+                self._ray.get(apply_grad_ref)
 
                 # Step LR scheduler
-                self._ray.get(self._ps_handles[p_id].step_scheduler_avrg.remote(_averaged_loss))
+                step_ref = self._ray.remote(self._ps_handles[p_id].step_scheduler_avrg, _averaged_loss)
+                self._ray.get(step_ref)
 
                 # update AvrgStrategyNet on all las
                 self._update_leaner_actors(update_avrg_for_plyrs=[p_id])
 
                 # log current loss
                 if self._t_prof.log_verbose and ((epoch_nr + 1) % SMOOTHING == 0):
-                    self._ray.wait([
+                    log_refs = [
                         self._ray.remote(self._chief_handle.add_scalar,
                                          exp_loss_each_p[p_id], "DCFR_NN_Losses/Average", epoch_nr,
                                          accumulated_averaged_loss / SMOOTHING)
-                    ])
+                    ]
+                    self._ray.wait(log_refs)
                     accumulated_averaged_loss = 0.0
 
                 t_syncing += time.time() - t0
