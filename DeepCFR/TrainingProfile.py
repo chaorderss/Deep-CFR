@@ -51,7 +51,6 @@ class TrainingProfile(TrainingProfileBase):
                  chip_randomness=(0, 0),            # 初始筹码的随机范围 (最小值偏移, 最大值偏移)
                  uniform_action_interpolation=False,# 是否在策略中对动作进行均匀插值
                  use_simplified_headsup_obs=True,   # (特定游戏) 是否使用简化的单挑 (heads-up) 观测空间
-
                  # ------ 评估设置 ------
                  eval_modes_of_algo=(EvalAgentDeepCFR.EVAL_MODE_SINGLE,), # 评估算法的模式 (例如: 单独评估)
                  eval_stack_sizes=None,             # 评估时使用的筹码量列表 (如果为 None, 通常使用训练时的筹码)
@@ -185,7 +184,6 @@ class TrainingProfile(TrainingProfileBase):
             start_chips=start_chips,
             eval_modes_of_algo=eval_modes_of_algo,
             eval_stack_sizes=eval_stack_sizes,
-
             # 计算和调试参数
             DEBUGGING=DEBUGGING,
             DISTRIBUTED=DISTRIBUTED,

@@ -564,3 +564,4 @@ $RECYCLE.BIN/
 models/
 logs/
 img/
+.DS_Store
