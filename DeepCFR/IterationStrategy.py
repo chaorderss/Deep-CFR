@@ -51,6 +51,13 @@ class IterationStrategy:
         """返回此策略对应的 CFR 迭代次数。"""
         return self._cfr_iter
 
+    @cfr_iteration.setter
+    def cfr_iteration(self, value):
+        """设置此策略对应的 CFR 迭代次数。"""
+        if not isinstance(value, int) or value < 0:
+            raise ValueError(f"CFR 迭代次数必须是非负整数，但收到：{value}")
+        self._cfr_iter = value
+
     @property
     def device(self):
         """返回此策略运行的设备。"""

@@ -19,64 +19,98 @@ class FlatHULimitPokerHistoryWrapper(Wrapper):
     """
 
     def __init__(self, env, env_bldr_that_built_me):
-        assert env.N_SEATS == 2
-        super().__init__(env=env, env_bldr_that_built_me=env_bldr_that_built_me)
+        """
+        Initializes the wrapper.
 
+        Args:
+            env: The original poker environment instance.
+            env_bldr_that_built_me: The environment builder (EnvBuilder) instance that created this environment and wrapper.
+                                    The builder contains configuration information about the observation space, action space, and history vector size.
+        """
+        assert env.N_SEATS == 2, "FlatHULimitPokerHistoryWrapper 只支持单挑 (2人) 游戏"
+        super().__init__(env=env, env_bldr_that_built_me=env_bldr_that_built_me)
+        print(f"env_bldr_that_built_me: {env_bldr_that_built_me}")
         self._action_vector_size = env_bldr_that_built_me.action_vector_size
         self._action_count_this_round = None
         self._game_round_last_tick = None
         self._action_history_vector = None
 
     def _reset_state(self, **kwargs):
+        """
+        Resets the internal state of the wrapper. Usually called when the environment is reset.
+        """
         self._action_count_this_round = [0, 0]  # one per player
         self._game_round_last_tick = Poker.PREFLOP
         self._action_history_vector = np.zeros(shape=self._action_vector_size, dtype=np.float32)
 
     def _pushback(self, env_obs=None):
-        # In case of a new round being dealt, the last action still has to have been in the old round since we observe
-        # every transition. That means that all the new_round logic has to be executed from the *next* transition
-        # onwards; this transition is handled within the old round.
+        """
+        Updates the action history vector after each environment step.
+        This is the core logic for encoding the action sequence.
+        (env_obs parameter is not used here)
+        """
+        # Processing logic: because we observe every transition, the last action of the old round is still in the old round.
+        # Therefore, all the new_round logic has to be executed from the *next* transition onwards; this transition is handled within the old round.
 
         # If None, env was just reset
-        _last_a = self.env.last_action[0]
-        if _last_a is not None:
-            _last_actor = self.env.last_action[2]
+        _last_a_type = self.env.last_action[0]
+        if _last_a_type is not None:
+            _last_actor_id = self.env.last_action[2]
 
             idx = self.env_bldr.get_vector_idx(round_=self._game_round_last_tick,
-                                               p_id=_last_actor,
-                                               nth_action_this_round=self._action_count_this_round[_last_actor],
-                                               action_idx=_last_a)
+                                               p_id=_last_actor_id,
+                                               nth_action_this_round=self._action_count_this_round[_last_actor_id],
+                                               action_idx=_last_a_type)
 
-            self._action_history_vector[idx] = 1  # one-hot over actions
+            if idx < self._action_vector_size:
+                self._action_history_vector[idx] = 1.0
+            else:
+                print(f"警告: 动作历史索引 {idx} 超出向量大小 {self._action_vector_size}")
 
-            self._action_count_this_round[_last_actor] += 1
+            self._action_count_this_round[_last_actor_id] += 1
             if self.env.current_round != self._game_round_last_tick:
                 self._game_round_last_tick = self.env.current_round
                 self._action_count_this_round = [0, 0]
 
     def print_obs(self, wrapped_obs=None):
+        """Prints the wrapped observation vector, including both base observation and appended action history."""
         if wrapped_obs is None:
             wrapped_obs = self.get_current_obs()
 
-        assert isinstance(wrapped_obs, np.ndarray)
+        assert isinstance(wrapped_obs, np.ndarray), "观察值必须是 NumPy 数组"
         print()
         print()
         print("*****************************************************************************************************")
         print()
-        print("________________________________________ OBSERVATION HISTORY ________________________________________")
+        print("________________________________________ 包装后的观察 + 历史 ________________________________________")
         print()
-        self.env.print_obs(wrapped_obs[:self.env_bldr.pub_obs_size - self._action_vector_size])
+        base_obs_size = self.env_bldr.pub_obs_size - self._action_vector_size
+        print("--- 基础环境观察 ---")
+        self.env.print_obs(wrapped_obs[:base_obs_size])
         print()
-        print("------------------- Action Sequence --------------------")
-        print(wrapped_obs[self.env_bldr.pub_obs_size - self._action_vector_size:])
+        print("--- 扁平化动作序列 (历史向量) ---")
+        print(wrapped_obs[base_obs_size:])
+        print("*****************************************************************************************************")
 
     def get_current_obs(self, env_obs=None):
+        """
+        Gets the wrapped current observation vector.
+
+        Args:
+            env_obs (np.ndarray, optional): The base environment observation vector. If None, will get from the base environment.
+
+        Returns:
+            np.ndarray: The base observation vector with appended action history.
+        """
         if env_obs is None:
-            return np.concatenate((self.env.get_current_obs(is_terminal=False), self._action_history_vector,), axis=0)
+            base_obs = self.env.get_current_obs(is_terminal=False)
         else:
-            return np.concatenate((env_obs, self._action_history_vector,), axis=0)
+            base_obs = env_obs
+
+        return np.concatenate((base_obs.astype(np.float32), self._action_history_vector.astype(np.float32)), axis=0)
 
     def state_dict(self):
+        """Returns the state dictionary of the wrapper for saving."""
         return {
             "base": super().state_dict(),
             "a_seq": np.copy(self._action_history_vector),
@@ -85,6 +119,7 @@ class FlatHULimitPokerHistoryWrapper(Wrapper):
         }
 
     def load_state_dict(self, state_dict):
+        """Loads the state of the wrapper from a dictionary."""
         super().load_state_dict(state_dict=state_dict["base"])
         self._action_history_vector = np.copy(state_dict["a_seq"])
         self._game_round_last_tick = state_dict["game_round_last_tick"]

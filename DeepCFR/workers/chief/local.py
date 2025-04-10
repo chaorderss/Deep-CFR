@@ -36,6 +36,15 @@ class Chief(_ChiefBase):
                                device=self._t_prof.device_inference)
                 for p in range(t_prof.n_seats)
             ]
+            # 为每个玩家预先创建 IterationStrategy 对象
+            self._current_iteration_strategies = [
+                 IterationStrategy(t_prof=self._t_prof,
+                                   env_bldr=self._env_bldr,
+                                   owner=p,
+                                   device=self._t_prof.device_inference,
+                                   cfr_iter=0) # 初始迭代设为 0
+                for p in range(t_prof.n_seats)
+            ]
 
             if self._t_prof.log_verbose:
                 self._exp_mem_usage = self.create_experiment(self._t_prof.name + " Chief_Memory_Usage")
@@ -111,17 +120,27 @@ class Chief(_ChiefBase):
 
     # Only applicable to SINGLE
     def add_new_iteration_strategy_model(self, owner, adv_net_state_dict, cfr_iter):
-        iter_strat = IterationStrategy(t_prof=self._t_prof, env_bldr=self._env_bldr, owner=owner,
-                                         device=self._t_prof.device_inference, cfr_iter=cfr_iter)
+        # 获取预先创建好的 IterationStrategy 对象
+        iter_strat = self._current_iteration_strategies[owner]
 
+        # 更新迭代号
+        iter_strat.cfr_iteration = cfr_iter # 假设 IterationStrategy 有 cfr_iteration 属性或 setter
+
+        # 加载新的网络权重到现有网络中 (这不会再触发 DuelingQNet 初始化)
         iter_strat.load_net_state_dict(
             self._ray.state_dict_to_torch(adv_net_state_dict, device=self._t_prof.device_inference))
+
+        # 将更新后的策略状态添加到缓冲区
+        # 注意：这里假设 StrategyBuffer.add() 接受 IterationStrategy 对象
+        # 如果它需要 state_dict，则应传入 iter_strat.state_dict()
+        # 并且需要确认 StrategyBuffer.add() 不会再内部创建新的 IterationStrategy
         self._strategy_buffers[iter_strat.owner].add(iteration_strat=iter_strat)
 
-        #  Store to disk
+        #  Store to disk (使用更新后的 iter_strat)
         if self._t_prof.export_each_net:
             path = ospj(self._t_prof.path_strategy_nets, self._t_prof.name)
             file_util.create_dir_if_not_exist(path)
+            # 确保 IterationStrategy 有 state_dict() 方法
             file_util.do_pickle(obj=iter_strat.state_dict(),
                                 path=path,
                                 file_name=str(iter_strat.cfr_iteration) + "_P" + str(iter_strat.owner) + ".pkl"

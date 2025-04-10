@@ -84,7 +84,7 @@ class CppLibHoldemLuts(CppWrapper):
     def get_2d_card(self, card_1d):
         """
         Args:
-            card_1d (int): 
+            card_1d (int):
 
         Returns:
             np.ndarray(shape=2, dtype=np.int8): 2d representation of card_1d

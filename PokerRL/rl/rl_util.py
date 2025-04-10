@@ -81,7 +81,12 @@ def get_env_cls_from_str(env_str):
 
 def get_env_builder(t_prof):
     ENV_BUILDER = get_builder_from_str(t_prof.env_builder_cls_str)
-    return ENV_BUILDER(env_cls=get_env_cls_from_str(t_prof.game_cls_str), env_args=t_prof.module_args["env"])
+    if t_prof.env_builder_cls_str == "NoLimitPokerEnvBuilder":
+        return ENV_BUILDER(env_cls=get_env_cls_from_str(t_prof.game_cls_str), env_args=t_prof.module_args["env"],
+                           num_discretized_actions=t_prof.num_discretized_actions,
+                           max_actions_per_round_heuristic=t_prof.max_actions_per_round_heuristic)
+    else:
+        return ENV_BUILDER(env_cls=get_env_cls_from_str(t_prof.game_cls_str), env_args=t_prof.module_args["env"])
 
 
 def get_builder_from_str(wrapper_str):

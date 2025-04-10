@@ -5,7 +5,7 @@ import torch # 导入 PyTorch 库
 
 from PokerRL.game import bet_sets # 从 PokerRL 库导入预定义的下注尺寸集合
 from PokerRL.game.games import DiscretizedNLLeduc # 从 PokerRL 库导入特定的扑克游戏变种 (离散化 Leduc Hold'em)
-from PokerRL.game.wrappers import HistoryEnvBuilder, FlatLimitPokerEnvBuilder # 导入环境构建器，用于根据网络类型创建合适的游戏环境接口
+from PokerRL.game.wrappers import HistoryEnvBuilder, FlatLimitPokerEnvBuilder, NoLimitPokerEnvBuilder # 导入环境构建器，用于根据网络类型创建合适的游戏环境接口
 from PokerRL.rl.base_cls.TrainingProfileBase import TrainingProfileBase # 导入所有训练配置文件的基类
 from PokerRL.rl.neural.AvrgStrategyNet import AvrgNetArgs # 导入平均策略网络参数类
 from PokerRL.rl.neural.DuelingQNet import DuelingQArgs # 导入 Dueling Q-Network 参数类 (用于优势网络)
@@ -45,6 +45,8 @@ class TrainingProfile(TrainingProfileBase):
 
                  # ------ 环境设置 ------
                  game_cls=DiscretizedNLLeduc,       # 要训练的扑克游戏类 (例如: Leduc, NoLimit Hold'em)
+                 num_discretized_actions=20,
+                 max_actions_per_round_heuristic=10,
                  n_seats=2,                         # 游戏中的玩家座位数
                  agent_bet_set=bet_sets.B_2,        # 智能体允许使用的下注尺寸集合 (相对于底池大小)
                  start_chips=None,                  # 玩家的初始筹码量 (如果为 None, 通常使用游戏默认值)
@@ -164,6 +166,24 @@ class TrainingProfile(TrainingProfileBase):
                                         card_block_units=n_cards_state_units_avrg,
                                         other_units=n_merge_and_table_layer_units_avrg,
                                         normalize=normalize_last_layer_FLAT_avrg)
+        elif nn_type == "feedforward-nolimit":
+            # 如果使用前馈神经网络 (Feedforward / MLP)
+            from PokerRL.rl.neural.MainPokerModuleFLAT import MPMArgsFLAT # 导入 Flat (前馈) 主扑克模块的参数类
+
+            env_bldr_cls = NoLimitPokerEnvBuilder # 前馈网络通常用于状态信息扁平化的环境
+
+            # 为优势网络配置前馈网络参数
+            mpm_args_adv = MPMArgsFLAT(use_pre_layers=use_pre_layers_adv,
+                                       card_block_units=n_cards_state_units_adv,
+                                       other_units=n_merge_and_table_layer_units_adv,
+                                       normalize=normalize_last_layer_FLAT_adv)
+            # 为平均策略网络配置前馈网络参数
+            mpm_args_avrg = MPMArgsFLAT(use_pre_layers=use_pre_layers_avrg,
+                                        card_block_units=n_cards_state_units_avrg,
+                                        other_units=n_merge_and_table_layer_units_avrg,
+                                        normalize=normalize_last_layer_FLAT_avrg)
+            self.num_discretized_actions = num_discretized_actions # 保存离散化动作数
+            self.max_actions_per_round_heuristic = max_actions_per_round_heuristic # 保存每轮最大动作数
 
         else:
             # 如果 nn_type 无效，则抛出错误
